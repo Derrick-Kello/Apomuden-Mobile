@@ -33,6 +33,11 @@ yarn-error.*
 # local env files
 .env*.local
 
+# Khaya API credentials (see ai.example.txt)
+ai.txt
+translation.txt
+text-to-speech.txt
+
 # typescript
 *.tsbuildinfo
 
