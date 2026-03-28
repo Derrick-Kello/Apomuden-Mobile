@@ -293,7 +293,7 @@ export default function AssistantScreen() {
   const isRec      = phase === 'recording';
   const isIdle     = phase === 'idle';
   const onSimulator = Platform.OS === 'ios' && !Device.isDevice;
-  // Khaya ASR only supports Twi — voice mode only works in Twi
+  // Khaya ASR is Twi-only — voice requires Twi + Khaya credentials
   const canVoice   = khayaOk && Platform.OS !== 'web' && !onSimulator && lang === 'tw';
 
   useEffect(() => {
@@ -302,6 +302,13 @@ export default function AssistantScreen() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       userIdRef.current = session?.user.id ?? null;
     });
+  }, []);
+
+  const clearChat = useCallback(() => {
+    setMsgs([]);
+    setInput('');
+    setTyping(false);
+    setVoiceResult(null);
   }, []);
 
   const focusInput = useCallback(() => {
@@ -316,21 +323,23 @@ export default function AssistantScreen() {
     requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
   }, []);
 
-  // ─── Chat pipeline ───────────────────────────────────────────────────────
+  // ─── Chat pipeline — works for both Twi and English ─────────────────────
   const handleChatSubmit = useCallback(async () => {
     const q = input.trim();
     if (!q || isTyping) return;
     setInput('');
     addMsg('user', q);
     setTyping(true);
+    let finalAnswer = '';
     try {
       const cfg = getKhayaConfig();
+      // Twi: translate to English for Claude, then back to Twi for response
       let englishQ = q;
       if (lang === 'tw' && cfg) {
         englishQ = await khayaTranslate(q, 'tw-en', cfg);
       }
       const englishAnswer = await askHealthQuestion(englishQ);
-      let finalAnswer = englishAnswer;
+      finalAnswer = englishAnswer;
       if (lang === 'tw' && cfg) {
         finalAnswer = await khayaTranslate(englishAnswer, 'en-tw', cfg);
       }
@@ -342,7 +351,14 @@ export default function AssistantScreen() {
         });
       }
     } catch (e) {
-      addMsg('aura', e instanceof Error ? e.message : String(e));
+      const errMsg = e instanceof Error ? e.message : String(e);
+      addMsg('aura', errMsg);
+      if (userIdRef.current) {
+        void saveInteraction({
+          user_id: userIdRef.current, language: lang,
+          user_msg: q, aura_msg: errMsg, source: 'chat', is_error: true,
+        });
+      }
     } finally {
       setTyping(false);
     }
@@ -452,16 +468,25 @@ export default function AssistantScreen() {
         <View style={s.header}>
           <Text style={[s.title, { color: colors.text, fontFamily: Fonts?.rounded }]}>Apomuden</Text>
           <ModePill mode={mode} onChange={setMode} colors={colors} />
-          <View style={[s.langPill, { backgroundColor: colors.backgroundElement }]}>
-            {(['tw', 'en'] as SupportedLanguage[]).map((code) => (
-              <Pressable key={code}
-                style={[s.langBtn, lang === code && { backgroundColor: Brand.primary }]}
-                onPress={() => setLang(code)}>
-                <Text style={[s.langTxt, { color: lang === code ? '#FFFFFF' : colors.textSecondary }]}>
-                  {code === 'tw' ? 'Twi' : 'EN'}
-                </Text>
+          <View style={s.headerRight}>
+            {messages.length > 0 && mode === 'chat' && (
+              <Pressable
+                style={[s.newChatBtn, { backgroundColor: colors.backgroundElement }]}
+                onPress={clearChat}>
+                <Icon name={{ ios: 'square.and.pencil', android: 'edit_note', web: 'square.and.pencil' }} size={16} tintColor={Brand.primary} />
               </Pressable>
-            ))}
+            )}
+            <View style={[s.langPill, { backgroundColor: colors.backgroundElement }]}>
+              {(['tw', 'en'] as SupportedLanguage[]).map((code) => (
+                <Pressable key={code}
+                  style={[s.langBtn, lang === code && { backgroundColor: Brand.primary }]}
+                  onPress={() => setLang(code)}>
+                  <Text style={[s.langTxt, { color: lang === code ? '#FFFFFF' : colors.textSecondary }]}>
+                    {code === 'tw' ? 'Twi' : 'EN'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
         </View>
       </SafeAreaView>
@@ -532,7 +557,7 @@ export default function AssistantScreen() {
             )}
             {!canVoice && !onSimulator && lang !== 'tw' && (
               <Text style={[s.hint, { color: colors.textTertiary }]}>
-                Voice works in Twi only — use Chat for English
+                Voice is Twi only — switch to Chat for English
               </Text>
             )}
             {!canVoice && !onSimulator && lang === 'tw' && (
@@ -590,7 +615,7 @@ export default function AssistantScreen() {
           <View style={[s.inputBar, {
             paddingBottom: messages.length === 0 && !isTyping
               ? Math.max(insets.bottom + TAB_BAR + Spacing.one - 70, insets.bottom + 8)
-              : 0,
+              : insets.bottom + 18,
             backgroundColor: colors.background,
             borderTopColor: colors.border,
           }]}>
@@ -635,6 +660,8 @@ const s = StyleSheet.create({
     paddingHorizontal: Spacing.four, paddingVertical: Spacing.two, gap: Spacing.two,
   },
   title:   { fontSize: 22, fontWeight: '700', letterSpacing: -0.4 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  newChatBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   langPill: { flexDirection: 'row', borderRadius: Radius.full, padding: 3, gap: 2 },
   langBtn:  { paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.full },
   langTxt:  { fontSize: 12, fontWeight: '600' },
