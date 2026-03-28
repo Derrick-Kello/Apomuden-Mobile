@@ -1,5 +1,5 @@
 const ANTHROPIC_VERSION = '2023-06-01';
-const CLAUDE_MODEL = 'claude-3-5-haiku-20241022';
+const CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
 
 function getApiKey(): string {
   const k = process.env.EXPO_PUBLIC_API_KEY?.trim();
