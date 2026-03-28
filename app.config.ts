@@ -92,13 +92,11 @@ function translateUrlFromTranslationReference(contents: string): string | null {
 
 function ttsUrlFromTtsReference(contents: string): string | null {
   const url = firstRequestLineUrl(contents);
-  if (!url) {
-    return null;
-  }
+  if (!url) return null;
   try {
     const u = new URL(url);
-    if (u.pathname.includes('/tts/v1/tts')) {
-      return `${u.origin}${u.pathname}${u.search}`;
+    if (u.pathname.includes('/tts/v1/tts') || u.pathname.includes('/tts/v2/tts')) {
+      return `${u.origin}/tts/v1/tts`;
     }
     if (u.pathname.includes('speakers')) {
       return `${u.origin}/tts/v1/tts`;
@@ -139,8 +137,15 @@ function loadKhayaExtraFromReferenceFiles(): KhayaExtra {
   const keyFromTts = ttsRef ? subscriptionKeyFromReference(ttsRef) : '';
   const subscriptionKey = keyFromAi || keyFromTr || keyFromTts || KHAYA_DEFAULTS.subscriptionKey;
 
+  // Guarantee ?language=tw is always present — ai.txt reference files often
+  // omit it from the URL, which causes a 400 "Invalid language" from the API.
+  const rawAsrUrl = fromAi.asrUrl ?? KHAYA_DEFAULTS.asrUrl;
+  const asrUrl = rawAsrUrl.includes('language=')
+    ? rawAsrUrl
+    : `${rawAsrUrl}${rawAsrUrl.includes('?') ? '&' : '?'}language=tw`;
+
   return {
-    asrUrl: fromAi.asrUrl ?? KHAYA_DEFAULTS.asrUrl,
+    asrUrl,
     translateUrl,
     ttsUrl,
     subscriptionKey,
@@ -152,8 +157,8 @@ function loadKhayaExtraFromReferenceFiles(): KhayaExtra {
 const khaya = loadKhayaExtraFromReferenceFiles();
 
 const base: ExpoConfig = {
-  name: 'AuraHealth',
-  slug: 'AuraHealth',
+  name: 'Apomuden',
+  slug: 'apomuden',
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
@@ -206,7 +211,7 @@ export default (): ExpoConfig => ({
       'expo-av',
       {
         microphonePermission:
-          'Allow AuraHealth to use the microphone to record audio for Khaya speech recognition.',
+          'Allow Apomuden to use the microphone to record audio for Khaya speech recognition.',
       },
     ],
   ],
